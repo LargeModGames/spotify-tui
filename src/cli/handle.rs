@@ -11,9 +11,9 @@ use clap::ArgMatches;
 
 // Handle the different subcommands
 pub async fn handle_matches(
-  matches: &ArgMatches<'_>,
+  matches: &ArgMatches,
   cmd: String,
-  net: Network<'_>,
+  net: Network,
   config: UserConfig,
 ) -> Result<String> {
   let mut cli = CliApp::new(net, config);
@@ -28,16 +28,20 @@ pub async fn handle_matches(
     Some(p) => p
       .devices
       .iter()
-      .map(|d| d.id.clone())
+      .filter_map(|d| d.id.clone())
       .collect::<Vec<String>>(),
     None => Vec::new(),
   };
 
   // If the device_id is not specified, select the first available device
   let device_id = cli.net.client_config.device_id.clone();
-  if device_id.is_none() || !devices_list.contains(&device_id.unwrap()) {
+  let needs_device = match &device_id {
+    Some(id) => !devices_list.contains(id),
+    None => true,
+  };
+  if needs_device {
     // Select the first device available
-    if let Some(d) = devices_list.get(0) {
+    if let Some(d) = devices_list.first() {
       cli.net.client_config.set_device_id(d.clone())?;
     }
   }

@@ -7,8 +7,8 @@ use anyhow::{anyhow, Result};
 use rand::{thread_rng, Rng};
 use rspotify::model::{context::CurrentPlaybackContext, PlayableItem};
 
-pub struct CliApp<'a> {
-  pub net: Network<'a>,
+pub struct CliApp {
+  pub net: Network,
   pub config: UserConfig,
 }
 
@@ -16,8 +16,8 @@ pub struct CliApp<'a> {
 // I feel that async in a cli is not working
 // I just .await all processes and directly interact
 // by calling network.handle_network_event
-impl<'a> CliApp<'a> {
-  pub fn new(net: Network<'a>, config: UserConfig) -> Self {
+impl CliApp {
+  pub fn new(net: Network, config: UserConfig) -> Self {
     Self { net, config }
   }
 
@@ -69,7 +69,11 @@ impl<'a> CliApp<'a> {
       match item {
         PlayableItem::Track(track) => Ok(format!(
           "https://open.spotify.com/track/{}",
-          track.id.to_owned().unwrap_or_default()
+          track
+            .id
+            .clone()
+            .map(|id| id.to_string())
+            .unwrap_or_default()
         )),
         PlayableItem::Episode(episode) => Ok(format!(
           "https://open.spotify.com/episode/{}",
@@ -94,11 +98,21 @@ impl<'a> CliApp<'a> {
       match item {
         PlayableItem::Track(track) => Ok(format!(
           "https://open.spotify.com/album/{}",
-          track.album.id.to_owned().unwrap_or_default()
+          track
+            .album
+            .id
+            .clone()
+            .map(|id| id.to_string())
+            .unwrap_or_default()
         )),
         PlayableItem::Episode(episode) => Ok(format!(
           "https://open.spotify.com/show/{}",
-          episode.show.id.to_owned()
+          episode
+            .show
+            .id
+            .clone()
+            .map(|id| id.to_string())
+            .unwrap_or_default()
         )),
       }
     } else {
@@ -118,11 +132,13 @@ impl<'a> CliApp<'a> {
         if d.name == name {
           device_index = i;
           // Save the id of the device
-          self
-            .net
-            .client_config
-            .set_device_id(d.id.clone())
-            .map_err(|_e| anyhow!("failed to use device with name '{}'", d.name))?;
+          if let Some(id) = d.id.clone() {
+            self
+              .net
+              .client_config
+              .set_device_id(id)
+              .map_err(|_e| anyhow!("failed to use device with name '{}'", d.name))?;
+          }
         }
       }
     } else {
@@ -189,7 +205,7 @@ impl<'a> CliApp<'a> {
                 format.to_string(),
                 vec![
                   Format::Device(d.name.clone()),
-                  Format::Volume(d.volume_percent),
+                  Format::Volume(d.volume_percent.unwrap_or(0)),
                 ],
               )
             })
@@ -256,7 +272,10 @@ impl<'a> CliApp<'a> {
     if let Some(devices) = &self.net.app.lock().await.devices {
       for d in &devices.devices {
         if d.name == device {
-          id.push_str(d.id.as_str());
+          if let Some(device_id) = &d.id {
+            id.push_str(device_id);
+            break;
+          }
           break;
         }
       }
@@ -292,8 +311,8 @@ impl<'a> CliApp<'a> {
       }) = &app.current_playback_context
       {
         let duration = match item {
-          PlayableItem::Track(track) => track.duration.num_milliseconds() as u32,
-          PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u32,
+          PlayableItem::Track(track) => track.duration.as_millis() as u32,
+          PlayableItem::Episode(episode) => episode.duration.as_millis() as u32,
         };
 
         (*ms as u32, duration)
@@ -414,10 +433,17 @@ impl<'a> CliApp<'a> {
 
     let mut hs = match playing_item {
       PlayableItem::Track(track) => {
-        let id = track.id.clone().unwrap_or_default();
+        let id = track
+          .id
+          .clone()
+          .map(|track_id| track_id.to_string())
+          .unwrap_or_default();
         let mut hs = Format::from_type(FormatType::Track(Box::new(track.clone())));
         if let Some(ms) = context.progress_ms {
-          hs.push(Format::Position((ms, track.duration.num_milliseconds() as u32)))
+          hs.push(Format::Position((
+            ms,
+            track.duration.as_millis() as u32,
+          )))
         }
         hs.push(Format::Flags((
           context.repeat_state,
@@ -429,7 +455,10 @@ impl<'a> CliApp<'a> {
       PlayableItem::Episode(episode) => {
         let mut hs = Format::from_type(FormatType::Episode(Box::new(episode.clone())));
         if let Some(ms) = context.progress_ms {
-          hs.push(Format::Position((ms, episode.duration.num_milliseconds() as u32)))
+          hs.push(Format::Position((
+            ms,
+            episode.duration.as_millis() as u32,
+          )))
         }
         hs.push(Format::Flags((
           context.repeat_state,
@@ -441,7 +470,7 @@ impl<'a> CliApp<'a> {
     };
 
     hs.push(Format::Device(context.device.name));
-    hs.push(Format::Volume(context.device.volume_percent));
+    hs.push(Format::Volume(context.device.volume_percent.unwrap_or(0)));
     hs.push(Format::Playing(context.is_playing));
 
     Ok(self.format_output(format, hs))

@@ -39,7 +39,7 @@ use rspotify::{
 };
 use std::{
   cmp::{max, min},
-  io::{self, stdout, Stdout},
+  io::{self, stdout},
   panic::{self, PanicInfo},
   path::PathBuf,
   sync::Arc,
@@ -346,22 +346,22 @@ async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> 
     let current_route = app.get_current_route();
     terminal.draw(|f| match current_route.active_block {
       ActiveBlock::HelpMenu => {
-        ui::draw_help_menu::<CrosstermBackend<Stdout>>(f, &app);
+        ui::draw_help_menu(f, &app);
       }
       ActiveBlock::Error => {
-        ui::draw_error_screen::<CrosstermBackend<Stdout>>(f, &app);
+        ui::draw_error_screen(f, &app);
       }
       ActiveBlock::SelectDevice => {
-        ui::draw_device_list::<CrosstermBackend<Stdout>>(f, &app);
+        ui::draw_device_list(f, &app);
       }
       ActiveBlock::Analysis => {
-        ui::audio_analysis::draw::<CrosstermBackend<Stdout>>(f, &app);
+        ui::audio_analysis::draw(f, &app);
       }
       ActiveBlock::BasicView => {
-        ui::draw_basic_view::<CrosstermBackend<Stdout>>(f, &app);
+        ui::draw_basic_view(f, &app);
       }
       _ => {
-        ui::draw_main_layout::<CrosstermBackend<Stdout>>(f, &app);
+        ui::draw_main_layout(f, &app);
       }
     })?;
 

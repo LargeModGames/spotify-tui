@@ -497,7 +497,7 @@ pub fn draw_search_results(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         .iter()
         .map(|item| {
           let mut show_name = String::new();
-          if app.saved_show_ids_set.contains(&item.id.to_owned()) {
+          if app.saved_show_ids_set.contains(&item.id.id().to_string()) {
             show_name.push_str(&app.user_config.padded_liked_icon());
           }
           show_name.push_str(&format!("{:} - {}", item.name, item.publisher));

@@ -1093,9 +1093,7 @@ impl App {
         if let Some(shows) = &self.search_results.shows {
           if let Some(selected_index) = self.search_results.selected_shows_index {
             if let Some(show_id) = shows.items.get(selected_index).map(|item| item.id.clone()) {
-              if let Ok(show_id) = ShowId::from_id(&show_id) {
-                self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id));
-              }
+              self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id.into_static()));
             }
           }
         }
@@ -1104,17 +1102,13 @@ impl App {
         EpisodeTableContext::Full => {
           if let Some(selected_episode) = self.selected_show_full.clone() {
             let show_id = selected_episode.show.id;
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id));
-            }
+            self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id.into_static()));
           }
         }
         EpisodeTableContext::Simplified => {
           if let Some(selected_episode) = self.selected_show_simplified.clone() {
             let show_id = selected_episode.show.id;
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id));
-            }
+            self.dispatch(IoEvent::CurrentUserSavedShowAdd(show_id.into_static()));
           }
         }
       },
@@ -1128,19 +1122,15 @@ impl App {
         if let Some(shows) = self.library.saved_shows.get_results(None) {
           if let Some(selected_show) = shows.items.get(self.shows_list_index) {
             let show_id = selected_show.show.id.clone();
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id));
-            }
+            self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id.into_static()));
           }
         }
       }
       ActiveBlock::SearchResultBlock => {
         if let Some(shows) = &self.search_results.shows {
           if let Some(selected_index) = self.search_results.selected_shows_index {
-            let show_id = shows.items[selected_index].id.to_owned();
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id));
-            }
+            let show_id = shows.items[selected_index].id.clone();
+            self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id.into_static()));
           }
         }
       }
@@ -1148,17 +1138,13 @@ impl App {
         EpisodeTableContext::Full => {
           if let Some(selected_episode) = self.selected_show_full.clone() {
             let show_id = selected_episode.show.id;
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id));
-            }
+            self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id.into_static()));
           }
         }
         EpisodeTableContext::Simplified => {
           if let Some(selected_episode) = self.selected_show_simplified.clone() {
             let show_id = selected_episode.show.id;
-            if let Ok(show_id) = ShowId::from_id(&show_id) {
-              self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id));
-            }
+            self.dispatch(IoEvent::CurrentUserSavedShowDelete(show_id.into_static()));
           }
         }
       },

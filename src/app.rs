@@ -449,8 +449,8 @@ impl App {
     }) = &self.current_playback_context
     {
       let duration_ms = match item {
-        PlayableItem::Track(track) => track.duration_ms,
-        PlayableItem::Episode(episode) => episode.duration_ms,
+        PlayableItem::Track(track) => track.duration.num_milliseconds() as u32,
+        PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u32,
       };
 
       let event = if seek_ms < duration_ms {
@@ -486,13 +486,18 @@ impl App {
     self.poll_current_playback();
     if let Some(CurrentPlaybackContext {
       item: Some(item),
-      progress_ms: Some(progress_ms),
+      progress,
       is_playing,
       ..
     }) = &self.current_playback_context
     {
       // Update progress even when the song is not playing,
       // because seeking is possible while paused
+      let current_progress_ms = progress
+        .as_ref()
+        .map(|p| p.num_milliseconds() as u128)
+        .unwrap_or(0);
+
       let elapsed = if *is_playing {
         self
           .instant_since_last_current_playback_poll
@@ -500,17 +505,17 @@ impl App {
           .as_millis()
       } else {
         0u128
-      } + u128::from(*progress_ms);
+      } + current_progress_ms;
 
       let duration_ms = match item {
-        PlayableItem::Track(track) => track.duration_ms,
-        PlayableItem::Episode(episode) => episode.duration_ms,
+        PlayableItem::Track(track) => track.duration.num_milliseconds() as u128,
+        PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u128,
       };
 
-      if elapsed < u128::from(duration_ms) {
+      if elapsed < duration_ms {
         self.song_progress_ms = elapsed;
       } else {
-        self.song_progress_ms = duration_ms.into();
+        self.song_progress_ms = duration_ms;
       }
     }
   }
@@ -521,8 +526,8 @@ impl App {
     }) = &self.current_playback_context
     {
       let duration_ms = match item {
-        PlayableItem::Track(track) => track.duration_ms,
-        PlayableItem::Episode(episode) => episode.duration_ms,
+        PlayableItem::Track(track) => track.duration.num_milliseconds() as u32,
+        PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u32,
       };
 
       let old_progress = match self.seek_ms {

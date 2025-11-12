@@ -11,7 +11,7 @@ use rspotify::{
     album::SimplifiedAlbum,
     artist::FullArtist,
     enums::{AdditionalType, Country, RepeatState, SearchType},
-    idtypes::{AlbumId, ArtistId, PlayContextId, PlaylistId, ShowId, TrackId, UserId},
+    idtypes::{AlbumId, ArtistId, PlayContextId, PlayableId, PlaylistId, ShowId, TrackId, UserId},
     page::Page,
     playlist::{PlaylistItem, SimplifiedPlaylist},
     recommend::Recommendations,
@@ -335,7 +335,7 @@ impl Network {
             PlayableItem::Track(track) => {
               if let Some(track_id) = track.id {
                 app.dispatch(IoEvent::CurrentUserSavedTracksContains(vec![
-                  track_id.to_string()
+                  track_id.into_static()
                 ]));
               };
             }
@@ -434,13 +434,13 @@ impl Network {
     let mut app = self.app.lock().await;
     app.track_table.tracks = tracks.clone();
 
-    // Send this event round (don't block here)
-    app.dispatch(IoEvent::CurrentUserSavedTracksContains(
-      tracks
-        .into_iter()
-        .filter_map(|item| item.id.map(|id| id.to_string()))
-        .collect::<Vec<String>>(),
-    ));
+    // Send this event round with typed TrackId (don't block here)
+    let track_ids: Vec<TrackId<'static>> = tracks
+      .into_iter()
+      .filter_map(|item| item.id.map(|id| id.into_static()))
+      .collect();
+
+    app.dispatch(IoEvent::CurrentUserSavedTracksContains(track_ids));
   }
 
   async fn set_artists_to_table(&mut self, artists: Vec<FullArtist>) {

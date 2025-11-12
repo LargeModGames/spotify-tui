@@ -5,6 +5,7 @@ use super::{
 use crate::app::{ActiveBlock, RouteId};
 use crate::event::Key;
 use crate::network::IoEvent;
+use rspotify::model::idtypes::PlaylistId;
 
 pub fn handler(key: Key, app: &mut App) {
   match key {
@@ -66,8 +67,13 @@ pub fn handler(key: Key, app: &mut App) {
         app.track_table.context = Some(TrackTableContext::MyPlaylists);
         app.playlist_offset = 0;
         if let Some(selected_playlist) = playlists.items.get(selected_playlist_index.to_owned()) {
-          let playlist_id = selected_playlist.id.to_owned();
-          app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+          // Convert to typed PlaylistId<'static>
+          if let Ok(playlist_id) = PlaylistId::from_id(&selected_playlist.id) {
+            app.dispatch(IoEvent::GetPlaylistItems(
+              playlist_id.into_static(),
+              app.playlist_offset,
+            ));
+          }
         }
       };
     }

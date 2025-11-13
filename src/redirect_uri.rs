@@ -4,7 +4,7 @@ use std::{
   net::{TcpListener, TcpStream},
 };
 
-pub fn redirect_uri_web_server(spotify: &mut AuthCodeSpotify, port: u16) -> Result<String, ()> {
+pub fn redirect_uri_web_server(_spotify: &mut AuthCodeSpotify, port: u16) -> Result<String, ()> {
   let listener = TcpListener::bind(format!("127.0.0.1:{}", port));
 
   match listener {

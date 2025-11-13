@@ -1,11 +1,11 @@
 use crate::event::Key;
 use anyhow::{anyhow, Result};
+use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::{
   fs,
   path::{Path, PathBuf},
 };
-use ratatui::style::Color;
 
 const FILE_NAME: &str = "config.yml";
 const CONFIG_DIR: &str = ".config";

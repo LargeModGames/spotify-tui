@@ -6,6 +6,7 @@ use std::{sync::mpsc, thread, time::Duration};
 /// Configuration for event handling.
 pub struct EventConfig {
   /// The key that is used to exit the application.
+  #[allow(dead_code)]
   pub exit_key: Key,
   /// The tick rate at which the application will sent an tick event.
   pub tick_rate: Duration,

@@ -726,16 +726,54 @@ impl Network {
     &mut self,
     context_id: Option<PlayContextId<'_>>,
     uris: Option<Vec<PlayableId<'_>>>,
-    _offset: Option<usize>,
+    offset: Option<usize>,
   ) {
     let device_id = self.client_config.device_id.as_deref();
 
-    let result = if let Some(context_id) = context_id {
+    // Check if we have both context and uris - this means play specific track within context
+    let has_both = context_id.is_some() && uris.is_some();
+
+    let result = if has_both {
+      // Special case: Play a specific track within a context
+      // This ensures the selected track plays first, even with shuffle enabled
+      let context = context_id.unwrap();
+      let track_uris = uris.unwrap();
+
+      if let Some(first_uri) = track_uris.first() {
+        // Convert PlayableId to a URI string
+        let uri_string = match first_uri {
+          PlayableId::Track(track_id) => format!("spotify:track:{}", track_id.id()),
+          PlayableId::Episode(episode_id) => format!("spotify:episode:{}", episode_id.id()),
+        };
+
+        let offset = rspotify::model::Offset::Uri(uri_string);
+        self
+          .spotify
+          .start_context_playback(context, device_id, Some(offset), None)
+          .await
+      } else {
+        self
+          .spotify
+          .start_context_playback(context, device_id, None, None)
+          .await
+      }
+    } else if let Some(context_id) = context_id {
+      // Play from context without specifying a starting track
       self
         .spotify
         .start_context_playback(context_id, device_id, None, None)
         .await
-    } else if let Some(uris) = uris {
+    } else if let Some(mut uris) = uris {
+      // For URI-based playback, reorder the list to put the selected track first
+      // This ensures the user's selected track plays first, regardless of shuffle mode
+      if let Some(offset_pos) = offset {
+        if offset_pos < uris.len() && offset_pos > 0 {
+          // Move the track at offset_pos to the front
+          let selected = uris.remove(offset_pos);
+          uris.insert(0, selected);
+        }
+      }
+
       self
         .spotify
         .start_uris_playback(uris, device_id, None, None)

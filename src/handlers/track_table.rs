@@ -361,7 +361,10 @@ fn on_enter(app: &mut App) {
   match &context {
     Some(context) => match context {
       TrackTableContext::MyPlaylists => {
-        if let Some(_track) = tracks.get(*selected_index) {
+        if let Some(track) = tracks.get(*selected_index) {
+          // Get the track ID to play
+          let track_playable_id = track_playable_id(track.id.clone());
+
           let context_id = match (&app.active_playlist_index, &app.playlists) {
             (Some(active_playlist_index), Some(playlists)) => playlists
               .items
@@ -370,11 +373,22 @@ fn on_enter(app: &mut App) {
             _ => None,
           };
 
-          app.dispatch(IoEvent::StartPlayback(
-            context_id,
-            None,
-            Some(app.track_table.selected_index + app.playlist_offset as usize),
-          ));
+          // If we have a track ID, play it directly within the context
+          // This ensures the selected track plays first, even with shuffle on
+          if let Some(playable_id) = track_playable_id {
+            app.dispatch(IoEvent::StartPlayback(
+              context_id,
+              Some(vec![playable_id]),
+              Some(0), // Play the first (and only) track in the URIs list
+            ));
+          } else {
+            // Fallback to context playback with offset
+            app.dispatch(IoEvent::StartPlayback(
+              context_id,
+              None,
+              Some(app.track_table.selected_index + app.playlist_offset as usize),
+            ));
+          }
         };
       }
       TrackTableContext::RecommendedTracks => {

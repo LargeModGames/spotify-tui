@@ -127,7 +127,7 @@
 - ✅ `get_current_playback` now dispatches `CurrentUserSavedTracksContains(vec![track_id.into_static()])`.
 - ✅ `set_tracks_to_table` converts every `FullTrack.id` into `TrackId<'static>` before dispatching `CurrentUserSavedTracksContains`.
 - ✅ `App` no longer stringifies IDs when following/unfollowing playlists, artists, or shows; clipboard helpers now bail gracefully if an ID is missing.
-- 🔶 Handler modules still emit string IDs when queueing IoEvents; `playlist.rs`, `recently_played.rs`, and the show add/remove helpers in `app.rs` now emit typed IDs, but `track_table.rs`, `album_tracks.rs`, `playbar.rs`, `artist.rs`, `search_results.rs`, `input.rs`, and `podcasts.rs` still need `.into_static()` conversions.
+- ✅ **COMPLETE**: All handler modules now emit typed IDs when queueing IoEvents; `recently_played.rs`, `select_device.rs`, and `mod.rs` dispatcher all use typed IDs consistently.
 
 #### Stream-returning rspotify APIs
 - ✅ Playlist fetchers (`get_playlist_tracks`, `get_made_for_you_playlist_tracks`), saved-track/album lists, artist albums, show episodes, and saved shows now call the explicit `*_manual` endpoints; `StreamExt` is no longer used in `network.rs`.
@@ -141,7 +141,7 @@
 #### UI Ratatui Follow-ups
 - ✅ All draw helpers now use `Frame<'_>`; Backend bounds removed.
 - ✅ `resume_position_ms` replaced with `resume_position` in episode tables.
-- ❌ Queue lookup and ID comparisons may still fail if they expect typed IDs instead of Strings; decide whether to store typed IDs or stringify at render time.
+- ✅ **COMPLETE**: Queue lookup and ID comparisons now properly handle both `TrackId` and `EpisodeId` by converting to strings via `.id()` for consistent HashSet lookups.
 
 #### Tokio Updates
 - ✅ `tokio::time::delay_for()` has been fully removed; remaining async waits use `tokio::time::sleep`.
@@ -149,17 +149,14 @@
 ### Medium Priority - Type Conversions
 
 #### ID Type Conversions
-- ❌ Fix `TrackId<'_>` to `String` conversions throughout codebase
-- ❌ Fix `ArtistId<'_>` to `String` conversions
-- ❌ Fix `AlbumId<'_>` to `String` conversions
-- ❌ Update all code that stores/compares IDs as Strings
-- ❌ Handle lifetime parameters in ID types
+- ✅ **COMPLETE**: All typed IDs (`TrackId<'_>`, `ArtistId<'_>`, `AlbumId<'_>`, `EpisodeId<'_>`, `PlaylistId<'_>`, `ShowId<'_>`) are now properly converted to strings using `.id()` method throughout the codebase.
+- ✅ All code that stores/compares IDs as Strings now properly converts typed IDs before storing or comparing.
+- ✅ Lifetime parameters handled consistently across all typed ID conversions using `.into_static()` where needed.
 
 #### Model Field Access
-- ❌ Update `PlaylistItem` field access (fields changed from `track` to different structure)
-- ❌ Review and fix `PlayableItem` enum matching
-- ❌ Update any code accessing changed model fields
-- ⚠️ `src/ui/mod.rs` still treats every playbar item as a `TrackId` (lines 366-377); update the queue/ID renderers to handle `EpisodeId` + typed IDs instead of forcing Strings.
+- ✅ All `PlayableItem` enum matching updated to handle both Track and Episode variants.
+- ✅ All code accessing model fields updated for rspotify 0.12 API changes.
+- ✅ `src/ui/mod.rs` now properly handles both `TrackId` and `EpisodeId` in playbar and queue rendering.
 
 ### Low Priority - Additional Updates
 
@@ -188,11 +185,9 @@
 
 ## Known Issues & Blockers
 
-- **Handler cleanup (in progress)**:
-  - `src/handlers/recently_played.rs` – needs `rspotify::prelude::Id` import so `.id()` works when building recommendation seeds.
-  - `src/handlers/select_device.rs` – still clones `app.devices`, but `DevicePayload` isn’t `Clone` in rspotify 0.12; switch to borrowing/mutating in place.
-  - `src/handlers/mod.rs` – playlist search dispatches string URIs into `GetPlaylistItems` and `app.get_artist`; convert to typed `PlaylistId`/`ArtistId`.
-- **UI queue IDs**: `src/ui/mod.rs` assumes every `PlayableItem` returns a `TrackId`; update the queue rendering + `saved_track_ids_set` lookups so episodes use `EpisodeId`.
+- **Housekeeping**: `cargo check` passes, but we still have compiler warnings (deprecated `PanicInfo`, unused `_spotify`, unused helpers in `track_table.rs`, lingering unused imports). Clean these up before tagging a release.
+- **Dependency cleanup**: confirm nothing uses `futures::StreamExt` anymore and drop the `futures` dependency if safe.
+- **Testing gap**: no manual/automated testing has happened since the typed-ID migration. Need focused smoke tests (OAuth, device switching, queue controls, search/podcasts, CLI entrypoints).
 
 ### Design Decisions Needed
 1. Do we store typed IDs (`TrackId`, `AlbumId`, …) inside `App`/UI state, or do we continue storing Strings and convert at the rspotify call sites?
@@ -204,19 +199,19 @@
 ## File-by-File Status
 
 ### Core Files
-| File                  | Status          | Notes                                                                                           |
-| --------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| `Cargo.toml`          | ✅ Updated       | Dependencies modernized                                                                         |
-| `src/main.rs`         | ✅ Updated       | Async bootstrap, token cache handling, and UI/CLI dispatch now compile + run.                   |
-| `src/network.rs`      | 🔶 Partial       | Typed track IDs flow through `CurrentUserSavedTracksContains`; playlist fetchers use manual pagination; saved-show APIs fully migrated. Still need artist/podcast stream rewrites. |
-| `src/redirect_uri.rs` | ✅ Updated       | Callback helper converted; unused `spotify` arg is the only warning.                            |
-| `src/config.rs`       | ⚠️ Unknown       | May need updates for new OAuth                                                                  |
-| `src/app.rs`          | ✅ Updated       | Playback helpers now use Duration/progress + typed IDs; clipboard and follow/unfollow flows modernized |
+| File                  | Status    | Notes                                                                                                                                                                              |
+| --------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cargo.toml`          | ✅ Updated | Dependencies modernized                                                                                                                                                            |
+| `src/main.rs`         | ✅ Updated | Async bootstrap, token cache handling, and UI/CLI dispatch now compile + run.                                                                                                      |
+| `src/network.rs`      | 🔶 Partial | Typed track IDs flow through `CurrentUserSavedTracksContains`; playlist fetchers use manual pagination; saved-show APIs fully migrated. Still need artist/podcast stream rewrites. |
+| `src/redirect_uri.rs` | ✅ Updated | Callback helper converted; unused `spotify` arg is the only warning.                                                                                                               |
+| `src/config.rs`       | ⚠️ Unknown | May need updates for new OAuth                                                                                                                                                     |
+| `src/app.rs`          | ✅ Updated | Playback helpers now use Duration/progress + typed IDs; clipboard and follow/unfollow flows modernized                                                                             |
 
 ### Handler Files
-| File                | Status          | Notes                                                              |
-| ------------------- | --------------- | ------------------------------------------------------------------ |
-| `src/handlers/*.rs` | 🔶 Partial       | `playlist.rs`, `recently_played.rs`, and show add/remove flows emit typed IDs; `track_table.rs`, `album_tracks.rs`, `artist.rs`, `search_results.rs`, `input.rs`, and `podcasts.rs` still pending |
+| File                | Status      | Notes                                                        |
+| ------------------- | ----------- | ------------------------------------------------------------ |
+| `src/handlers/*.rs` | ✅ Completed | All handlers emit typed IDs; no legacy `.uri` usage remains. |
 
 ### UI Files
 | File                       | Status     | Notes                                                                                 |
@@ -235,10 +230,10 @@
 
 ## Next Steps
 
-### Immediate Actions (to get it compiling)
-1. ❌ Finish the handler sweep: patch `recently_played.rs`, `select_device.rs`, `handlers/mod.rs`, and any remaining files so IoEvents take typed IDs and no `.uri` fields remain.
-2. ❌ Fix the UI queue rendering (`src/ui/mod.rs`) to handle `EpisodeId`/`TrackId` correctly rather than forcing Strings.
-3. ❌ Re-test search/podcast flows (CLI + UI) with the new pagination + `Market` arguments; drop the unused `futures` dependency once confirmed no code needs `StreamExt`.
+### Immediate Actions
+1. 🧹 Clean up compiler warnings (deprecated `PanicInfo`, unused helpers/imports, unused `_spotify` argument) so `cargo check` is warning-free.
+2. 🧾 Audit dependencies (drop `futures` if truly unused, bump docs/config for rspotify 0.12).
+3. 🧪 Start a focused smoke-test pass (OAuth, playback controls, device transfer, search/podcast browsing, CLI commands).
 
 ### Short Term (to get it working)
 1. Re-test every `Network` API method once typed-ID dispatch & stream handling compile; ensure logging/error propagation is aligned with new APIs.
@@ -274,5 +269,5 @@
 
 ---
 
-*Last Updated: 2025-11-11 by Codex (UI ratatui draw migration completed)*
-*Status: Migration In Progress - Compilation Failing*
+*Last Updated: 2025-11-13 by GitHub Copilot (Queue/ID cleanup completed)*
+*Status: Compilation Successful - Ready for Testing*

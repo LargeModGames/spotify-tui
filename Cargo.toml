@@ -26,7 +26,6 @@ backtrace = "0.3.57"
 arboard = "3.4"
 crossterm = "0.27"
 tokio = { version = "1.40", features = ["full"] }
-futures = "0.3"
 rand = "0.8.4"
 anyhow = "1.0.43"
 chrono = "0.4.42"

@@ -426,6 +426,16 @@ impl Network {
     let mut app = self.app.lock().await;
     app.track_table.tracks = tracks.clone();
 
+    // Clamp selected_index to valid range after loading new tracks
+    if !app.track_table.tracks.is_empty() {
+      let max_index = app.track_table.tracks.len().saturating_sub(1);
+      if app.track_table.selected_index > max_index {
+        app.track_table.selected_index = max_index;
+      }
+    } else {
+      app.track_table.selected_index = 0;
+    }
+
     // Send this event round with typed TrackId (don't block here)
     let track_ids: Vec<TrackId<'static>> = tracks
       .into_iter()

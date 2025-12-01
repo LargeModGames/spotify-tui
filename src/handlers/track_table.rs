@@ -73,6 +73,53 @@ pub fn handler(key: Key, app: &mut App) {
       app.track_table.selected_index = next_index;
     }
     k if common_key_events::up_event(k) => {
+      let current_index = app.track_table.selected_index;
+
+      // Check if we're at the first track and there are previous tracks to load
+      if current_index == 0 {
+        match &app.track_table.context {
+          Some(TrackTableContext::MyPlaylists) => {
+            if app.playlist_offset > 0 {
+              if let (Some(playlists), Some(selected_playlist_index)) =
+                (&app.playlists, &app.selected_playlist_index)
+              {
+                if let Some(selected_playlist) = playlists.items.get(*selected_playlist_index) {
+                  app.playlist_offset = app.playlist_offset.saturating_sub(app.large_search_limit);
+                  let playlist_id = playlist_id_static_from_ref(&selected_playlist.id);
+                  app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+                  // Set selection to last track of the loaded page
+                  app.track_table.selected_index =
+                    app.large_search_limit.saturating_sub(1) as usize;
+                  return;
+                }
+              }
+            }
+          }
+          Some(TrackTableContext::MadeForYou) => {
+            if app.made_for_you_offset > 0 {
+              let (playlists, selected_playlist_index) =
+                (&app.library.made_for_you_playlists, &app.made_for_you_index);
+              if let Some(selected_playlist) = playlists
+                .get_results(Some(0))
+                .and_then(|p| p.items.get(*selected_playlist_index))
+              {
+                app.made_for_you_offset = app
+                  .made_for_you_offset
+                  .saturating_sub(app.large_search_limit);
+                let playlist_id = playlist_id_static_from_ref(&selected_playlist.id);
+                app.dispatch(IoEvent::GetMadeForYouPlaylistItems(
+                  playlist_id,
+                  app.made_for_you_offset,
+                ));
+                app.track_table.selected_index = app.large_search_limit.saturating_sub(1) as usize;
+                return;
+              }
+            }
+          }
+          _ => {}
+        }
+      }
+
       let next_index = common_key_events::on_up_press_handler(
         &app.track_table.tracks,
         Some(app.track_table.selected_index),

@@ -10,7 +10,7 @@ use std::{
 const DEFAULT_PORT: u16 = 8888;
 const FILE_NAME: &str = "client.yml";
 const CONFIG_DIR: &str = ".config";
-const APP_CONFIG_DIR: &str = "spotify-tui";
+const APP_CONFIG_DIR: &str = "spotatui";
 const TOKEN_CACHE_FILE: &str = ".spotify_token_cache.json";
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,10 +171,10 @@ impl ClientConfig {
           client_key.clear();
           num_retries += 1;
           if num_retries == MAX_RETRIES {
-            return Err(Error::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("Maximum retries ({}) exceeded.", MAX_RETRIES),
-            )));
+            return Err(Error::from(std::io::Error::other(format!(
+              "Maximum retries ({}) exceeded.",
+              MAX_RETRIES
+            ))));
           }
         }
       };
@@ -188,7 +188,7 @@ impl ClientConfig {
         std::io::ErrorKind::InvalidInput,
         format!("invalid length: {} (must be {})", key.len(), EXPECTED_LEN,),
       )))
-    } else if !key.chars().all(|c| c.is_digit(16)) {
+    } else if !key.chars().all(|c| c.is_ascii_hexdigit()) {
       Err(Error::from(std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         "invalid character found (must be hex digits)",

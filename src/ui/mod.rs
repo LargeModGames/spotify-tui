@@ -1127,26 +1127,88 @@ fn draw_home(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
   // Banner text with correct styling
   let top_text = Text::from(BANNER).patch_style(Style::default().fg(app.user_config.theme.banner));
 
-  let bottom_text_raw = format!(
-    "{}{}",
-    "\nPlease report any bugs or missing features to https://github.com/LargeModGames/spotatui\n\n",
-    clean_changelog
-  );
-  let bottom_text = Text::from(bottom_text_raw.as_str());
-
   // Contains the banner
   let top_text = Paragraph::new(top_text)
     .style(Style::default().fg(app.user_config.theme.text))
     .block(Block::default());
   f.render_widget(top_text, chunks[0]);
 
+  // Parse changelog with styling
+  let changelog_lines = parse_changelog_with_style(&clean_changelog, &app.user_config.theme);
+
   // CHANGELOG
-  let bottom_text = Paragraph::new(bottom_text)
-    .style(Style::default().fg(app.user_config.theme.text))
+  let bottom_text = Paragraph::new(changelog_lines)
     .block(Block::default())
     .wrap(Wrap { trim: false })
     .scroll((app.home_scroll, 0));
   f.render_widget(bottom_text, chunks[1]);
+}
+
+/// Parse markdown changelog and apply terminal styling
+fn parse_changelog_with_style<'a>(
+  changelog: &'a str,
+  theme: &crate::user_config::Theme,
+) -> Text<'a> {
+  use ratatui::style::Color;
+
+  let mut lines: Vec<Line> = vec![];
+
+  // Add intro line
+  lines.push(Line::from(Span::styled(
+    "Please report any bugs or missing features to https://github.com/LargeModGames/spotatui",
+    Style::default().fg(theme.hint),
+  )));
+  lines.push(Line::from(""));
+
+  for line in changelog.lines() {
+    let styled_line = if line.starts_with("# ") {
+      // Main title - bright and bold
+      Line::from(Span::styled(
+        line.trim_start_matches("# "),
+        Style::default()
+          .fg(theme.banner)
+          .add_modifier(Modifier::BOLD),
+      ))
+    } else if line.starts_with("## [") {
+      // Version headers - highlighted
+      Line::from(Span::styled(
+        format!("═══ {} ═══", line.trim_start_matches("## ")),
+        Style::default()
+          .fg(Color::Cyan)
+          .add_modifier(Modifier::BOLD),
+      ))
+    } else if line.starts_with("### ") {
+      // Section headers (Added/Fixed/Changed)
+      let section = line.trim_start_matches("### ");
+      let color = match section {
+        "Added" => Color::Green,
+        "Fixed" => Color::Yellow,
+        "Changed" => Color::Blue,
+        "Removed" => Color::Red,
+        "Security" => Color::Magenta,
+        _ => theme.text,
+      };
+      Line::from(Span::styled(
+        format!("  ┌─ {} ─┐", section),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+      ))
+    } else if line.starts_with("- ") {
+      // Bullet points
+      let content = line.trim_start_matches("- ");
+      Line::from(vec![
+        Span::styled("  • ", Style::default().fg(theme.inactive)),
+        Span::styled(content, Style::default().fg(theme.text)),
+      ])
+    } else if line.is_empty() {
+      Line::from("")
+    } else {
+      // Regular text
+      Line::from(Span::styled(line, Style::default().fg(theme.text)))
+    };
+    lines.push(styled_line);
+  }
+
+  Text::from(lines)
 }
 
 fn draw_artist_albums(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {

@@ -166,11 +166,21 @@ pub fn draw_input_and_help_box(f: &mut Frame<'_>, app: &App, layout_chunk: Rect)
 
 pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
   let margin = util::get_main_layout_margin(app);
+  
+  // Calculate debug area height (only show if there are messages)
+  let debug_height = if app.debug_messages.is_empty() { 0 } else { 
+    (app.debug_messages.len() as u16).min(5) + 2  // +2 for border
+  };
+  
   // Responsive layout: new one kicks in at width 150 or higher
   if app.size.width >= SMALL_TERMINAL_WIDTH && !app.user_config.behavior.enforce_wide_search_bar {
     let parent_layout = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Min(1), Constraint::Length(6)].as_ref())
+      .constraints([
+        Constraint::Min(1), 
+        Constraint::Length(6),
+        Constraint::Length(debug_height),
+      ].as_ref())
       .margin(margin)
       .split(f.size());
 
@@ -179,6 +189,11 @@ pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
 
     // Currently playing
     draw_playbar(f, app, parent_layout[1]);
+    
+    // Debug messages
+    if debug_height > 0 {
+      draw_debug_messages(f, app, parent_layout[2]);
+    }
   } else {
     let parent_layout = Layout::default()
       .direction(Direction::Vertical)
@@ -187,6 +202,7 @@ pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
           Constraint::Length(3),
           Constraint::Min(1),
           Constraint::Length(6),
+          Constraint::Length(debug_height),
         ]
         .as_ref(),
       )
@@ -201,6 +217,11 @@ pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
 
     // Currently playing
     draw_playbar(f, app, parent_layout[2]);
+    
+    // Debug messages
+    if debug_height > 0 {
+      draw_debug_messages(f, app, parent_layout[3]);
+    }
   }
 
   // Possibly draw confirm dialog
@@ -208,6 +229,22 @@ pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
 
   // Draw update notification if available (on top of everything)
   draw_update_notification(f, app);
+}
+
+fn draw_debug_messages(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
+  let theme = app.user_config.theme.clone();
+  let messages: Vec<Line> = app.debug_messages
+    .iter()
+    .map(|msg| Line::from(Span::styled(msg.as_str(), Style::default().fg(theme.hint))))
+    .collect();
+  
+  let block = Block::default()
+    .borders(Borders::ALL)
+    .title(Span::styled(" Debug ", Style::default().fg(theme.hint)))
+    .border_style(Style::default().fg(theme.inactive));
+  
+  let paragraph = Paragraph::new(messages).block(block);
+  f.render_widget(paragraph, layout_chunk);
 }
 
 pub fn draw_routes(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
@@ -1279,19 +1316,38 @@ pub fn draw_device_list(f: &mut Frame<'_>, app: &App) {
 
   let no_device_message = Span::raw("No devices found: Make sure a device is active");
 
-  let items = match &app.devices {
-    Some(items) => {
-      if items.devices.is_empty() {
-        vec![ListItem::new(no_device_message)]
+  let mut items: Vec<ListItem> = Vec::new();
+
+  // Add local device option if librespot feature is enabled
+  #[cfg(feature = "librespot")]
+  {
+    let local_label = if app.playback_mode == crate::player::PlaybackMode::Local {
+      "▶ This Device (spotatui) [Active]"
+    } else {
+      "  This Device (spotatui)"
+    };
+    items.push(ListItem::new(Span::styled(
+      local_label,
+      Style::default().fg(app.user_config.theme.active),
+    )));
+  }
+
+  // Add remote devices
+  match &app.devices {
+    Some(device_payload) => {
+      if device_payload.devices.is_empty() && items.is_empty() {
+        items.push(ListItem::new(no_device_message));
       } else {
-        items
-          .devices
-          .iter()
-          .map(|device| ListItem::new(Span::raw(&device.name)))
-          .collect()
+        for device in &device_payload.devices {
+          items.push(ListItem::new(Span::raw(&device.name)));
+        }
       }
     }
-    None => vec![ListItem::new(no_device_message)],
+    None => {
+      if items.is_empty() {
+        items.push(ListItem::new(no_device_message));
+      }
+    }
   };
 
   let mut state = ListState::default();

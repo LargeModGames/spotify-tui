@@ -31,6 +31,9 @@ use std::{
 
 use arboard::Clipboard;
 
+#[cfg(feature = "librespot")]
+use crate::player::{LocalPlayer, PlaybackMode};
+
 pub const LIBRARY_OPTIONS: [&str; 6] = [
   "Made For You",
   "Recently Played",
@@ -329,6 +332,14 @@ pub struct App {
   pub confirm: bool,
   pub update_available: Option<UpdateInfo>,
   pub update_notification_shown_at: Option<Instant>,
+  /// Current playback mode (local via librespot or remote via Spotify Connect)
+  #[cfg(feature = "librespot")]
+  pub playback_mode: PlaybackMode,
+  /// Local player handle (when librespot feature is enabled)
+  #[cfg(feature = "librespot")]
+  pub local_player: Option<LocalPlayer>,
+  /// Debug messages to display at the bottom of the screen
+  pub debug_messages: std::collections::VecDeque<String>,
 }
 
 impl Default for App {
@@ -418,6 +429,11 @@ impl Default for App {
       confirm: false,
       update_available: None,
       update_notification_shown_at: None,
+      #[cfg(feature = "librespot")]
+      playback_mode: PlaybackMode::default(),
+      #[cfg(feature = "librespot")]
+      local_player: None,
+      debug_messages: std::collections::VecDeque::with_capacity(5),
     }
   }
 }
@@ -447,6 +463,14 @@ impl App {
         // TODO: handle error
       };
     }
+  }
+
+  /// Add a debug message to display at the bottom of the screen
+  pub fn add_debug_message(&mut self, msg: impl Into<String>) {
+    if self.debug_messages.len() >= 5 {
+      self.debug_messages.pop_front();
+    }
+    self.debug_messages.push_back(msg.into());
   }
 
   fn apply_seek(&mut self, seek_ms: u32) {

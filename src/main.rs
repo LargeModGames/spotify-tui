@@ -5,9 +5,15 @@ mod config;
 mod event;
 mod handlers;
 mod network;
+#[cfg(feature = "librespot")]
+mod player;
 mod redirect_uri;
 mod ui;
 mod user_config;
+
+// Enable log output from librespot and other crates. This is especially helpful
+// for debugging local playback failures (e.g., "Track unavailable").
+static INIT_LOGGER: std::sync::Once = std::sync::Once::new();
 
 use crate::app::RouteId;
 use crate::event::Key;
@@ -50,7 +56,7 @@ use std::{
 use tokio::sync::Mutex;
 use user_config::{UserConfig, UserConfigPaths};
 
-const SCOPES: [&str; 14] = [
+const SCOPES: [&str; 15] = [
   "playlist-read-collaborative",
   "playlist-read-private",
   "playlist-modify-private",
@@ -65,6 +71,7 @@ const SCOPES: [&str; 14] = [
   "user-read-playback-position",
   "user-read-private",
   "user-read-recently-played",
+  "streaming",
 ];
 
 // Manual token cache helpers since rspotify's built-in caching isn't working
@@ -129,8 +136,22 @@ fn panic_hook(info: &PanicHookInfo<'_>) {
   }
 }
 
+fn init_logger() {
+  INIT_LOGGER.call_once(|| {
+    // Default to showing librespot debug output if the user has not set RUST_LOG.
+    if std::env::var("RUST_LOG").is_err() {
+      std::env::set_var("RUST_LOG", "librespot_playback=debug,librespot_core=info");
+    }
+    let _ = env_logger::Builder::from_default_env()
+      .format_timestamp_secs()
+      .format_module_path(false)
+      .try_init();
+  });
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+  init_logger();
   panic::set_hook(Box::new(|info| {
     panic_hook(info);
   }));

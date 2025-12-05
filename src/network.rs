@@ -90,6 +90,11 @@ pub enum IoEvent {
   GetShow(ShowId<'static>),
   GetCurrentShowEpisodes(ShowId<'static>, Option<u32>),
   AddItemToQueue(PlayableId<'static>),
+  // Local playback events (librespot)
+  #[cfg(feature = "librespot")]
+  SwitchToLocalPlayback,
+  #[cfg(feature = "librespot")]
+  InitializeLocalPlayer,
 }
 
 #[derive(Clone)]
@@ -274,6 +279,14 @@ impl Network {
       IoEvent::AddItemToQueue(item) => {
         self.add_item_to_queue(item).await;
       }
+      #[cfg(feature = "librespot")]
+      IoEvent::SwitchToLocalPlayback => {
+        self.switch_to_local_playback().await;
+      }
+      #[cfg(feature = "librespot")]
+      IoEvent::InitializeLocalPlayer => {
+        self.initialize_local_player().await;
+      }
     };
 
     let mut app = self.app.lock().await;
@@ -301,15 +314,16 @@ impl Network {
     if let Ok(devices_vec) = self.spotify.device().await {
       let mut app = self.app.lock().await;
       app.push_navigation_stack(RouteId::SelectedDevice, ActiveBlock::SelectDevice);
-      if !devices_vec.is_empty() {
-        // Wrap Vec<Device> in DevicePayload
-        let result = rspotify::model::device::DevicePayload {
-          devices: devices_vec,
-        };
-        app.devices = Some(result);
-        // Select the first device in the list
-        app.selected_device_index = Some(0);
-      }
+
+      // Wrap Vec<Device> in DevicePayload (even if empty)
+      let result = rspotify::model::device::DevicePayload {
+        devices: devices_vec,
+      };
+      app.devices = Some(result);
+
+      // Always select the first device (index 0)
+      // With librespot, index 0 is "This Device", so there's always at least one option
+      app.selected_device_index = Some(0);
     }
   }
 
@@ -753,6 +767,17 @@ impl Network {
     uris: Option<Vec<PlayableId<'_>>>,
     offset: Option<usize>,
   ) {
+    // Check if we're in local playback mode
+    #[cfg(feature = "librespot")]
+    {
+      let app = self.app.lock().await;
+      if app.playback_mode == crate::player::PlaybackMode::Local {
+        drop(app);
+        self.start_local_playback(uris, offset).await;
+        return;
+      }
+    }
+
     let device_id = self.client_config.device_id.as_deref();
 
     // If we're playing a specific track (with offset), temporarily disable shuffle
@@ -849,6 +874,18 @@ impl Network {
   }
 
   async fn seek(&mut self, position_ms: u32) {
+    // Check if we're in local playback mode
+    #[cfg(feature = "librespot")]
+    {
+      let app = self.app.lock().await;
+      if app.playback_mode == crate::player::PlaybackMode::Local {
+        if let Some(ref local_player) = app.local_player {
+          let _ = local_player.send_command(crate::player::PlayerCommand::Seek(position_ms));
+        }
+        return;
+      }
+    }
+
     let device_id = self.client_config.device_id.as_deref();
     // rspotify 0.12 uses chrono::TimeDelta for seek_track
     let position = TimeDelta::milliseconds(position_ms as i64);
@@ -940,6 +977,18 @@ impl Network {
   }
 
   async fn pause_playback(&mut self) {
+    // Check if we're in local playback mode
+    #[cfg(feature = "librespot")]
+    {
+      let app = self.app.lock().await;
+      if app.playback_mode == crate::player::PlaybackMode::Local {
+        if let Some(ref local_player) = app.local_player {
+          let _ = local_player.send_command(crate::player::PlayerCommand::Pause);
+        }
+        return;
+      }
+    }
+
     match self
       .spotify
       .pause_playback(self.client_config.device_id.as_deref())
@@ -1662,5 +1711,234 @@ impl Network {
         self.handle_error(anyhow!(e)).await;
       }
     }
+  }
+
+  #[cfg(feature = "librespot")]
+  async fn switch_to_local_playback(&mut self) {
+    use crate::player::PlaybackMode;
+
+    {
+      let mut app = self.app.lock().await;
+      app.add_debug_message("Switching to local playback...".to_string());
+    }
+
+    // Initialize the local player first (this will do OAuth if needed)
+    self.initialize_local_player().await;
+
+    // Check if initialization succeeded
+    let initialized = {
+      let app = self.app.lock().await;
+      app.local_player.is_some()
+    };
+
+    if initialized {
+      let mut app = self.app.lock().await;
+      app.playback_mode = PlaybackMode::Local;
+      app.add_debug_message("Local player ready!".to_string());
+      app.pop_navigation_stack();
+    } else {
+      let mut app = self.app.lock().await;
+      app.add_debug_message("Failed to initialize local player".to_string());
+    }
+  }
+
+  #[cfg(feature = "librespot")]
+  async fn start_local_playback(
+    &mut self,
+    uris: Option<Vec<PlayableId<'_>>>,
+    offset: Option<usize>,
+  ) {
+    use crate::player::PlayerCommand;
+
+    // Get the track URI to play
+    let track_uri = if let Some(uris) = &uris {
+      // URIs were explicitly provided
+      let idx = offset.unwrap_or(0);
+      {
+        let mut app = self.app.lock().await;
+        app.add_debug_message(format!(
+          "URIs provided: {}, using index: {}",
+          uris.len(),
+          idx
+        ));
+      }
+      if let Some(playable_id) = uris.get(idx) {
+        match playable_id {
+          PlayableId::Track(track_id) => Some(format!("spotify:track:{}", track_id.id())),
+          PlayableId::Episode(episode_id) => Some(format!("spotify:episode:{}", episode_id.id())),
+        }
+      } else {
+        let mut app = self.app.lock().await;
+        app.add_debug_message(format!("Index {} out of bounds for uris", idx));
+        None
+      }
+    } else {
+      // No URIs provided - try to get from the current track table
+      let mut app = self.app.lock().await;
+      app.add_debug_message("No URIs provided, checking track table".to_string());
+      let idx = offset.unwrap_or(app.track_table.selected_index);
+      let track_count = app.track_table.tracks.len();
+      let selected_idx = app.track_table.selected_index;
+      app.add_debug_message(format!(
+        "Track table: {} tracks, selected: {}, using: {}",
+        track_count, selected_idx, idx
+      ));
+      if let Some(track) = app.track_table.tracks.get(idx) {
+        let track_name = track.name.clone();
+        let track_uri = track
+          .id
+          .as_ref()
+          .map(|id| format!("spotify:track:{}", id.id()));
+        app.add_debug_message(format!("Found track: {}", track_name));
+        track_uri
+      } else {
+        app.add_debug_message(format!("No track at index {}", idx));
+        None
+      }
+    };
+
+    let Some(uri) = track_uri else {
+      self
+        .handle_error(anyhow!("No track URI provided for local playback"))
+        .await;
+      return;
+    };
+
+    {
+      let mut app = self.app.lock().await;
+      app.add_debug_message(format!("Playing URI: {}", uri));
+    }
+
+    // Send the load command to the local player
+    let mut app = self.app.lock().await;
+    if let Some(ref local_player) = app.local_player {
+      // Check if player is initialized
+      if !local_player.state.is_initialized {
+        drop(app);
+        self
+          .handle_error(anyhow!(
+            "Local player not yet initialized - please wait and try again"
+          ))
+          .await;
+        return;
+      }
+      let cmd = PlayerCommand::Load {
+        uri: uri.clone(),
+        start_playing: true,
+        position_ms: 0,
+      };
+      if let Err(e) = local_player.send_command(cmd) {
+        drop(app);
+        self
+          .handle_error(anyhow!("Failed to send command to local player: {}", e))
+          .await;
+        return;
+      }
+      app.song_progress_ms = 0;
+    } else {
+      drop(app);
+      self
+        .handle_error(anyhow!("Local player not initialized"))
+        .await;
+    }
+  }
+
+  #[cfg(feature = "librespot")]
+  async fn initialize_local_player(&mut self) {
+    use crate::player::{spawn_player_worker, LocalPlayer, PlayerCommand, PlayerWorkerConfig};
+
+    // Get client_id from the client config
+    let client_id = self.client_config.client_id.clone();
+    // Use a unique port for librespot OAuth callback (different from rspotify's port)
+    let redirect_port = 18989_u16;
+
+    if client_id.is_empty() {
+      self
+        .handle_error(anyhow!("No client_id configured for local playback"))
+        .await;
+      return;
+    }
+
+    {
+      let mut app = self.app.lock().await;
+      app.add_debug_message("Initializing local player...".to_string());
+    }
+
+    // Get cache path from config
+    let cache_path = match dirs::cache_dir() {
+      Some(mut path) => {
+        path.push("spotatui");
+        path.push("librespot");
+        Some(path)
+      }
+      None => None,
+    };
+
+    let config = PlayerWorkerConfig {
+      cache_path,
+      ..Default::default()
+    };
+
+    // Spawn the player worker
+    let (cmd_tx, event_rx) = spawn_player_worker(config);
+
+    {
+      let mut app = self.app.lock().await;
+      app.add_debug_message("Player worker spawned, sending Initialize".to_string());
+    }
+
+    // Send Initialize command with OAuth configuration
+    if let Err(e) = cmd_tx.send(PlayerCommand::Initialize {
+      client_id,
+      redirect_port,
+    }) {
+      self
+        .handle_error(anyhow!("Failed to send Initialize command: {}", e))
+        .await;
+      return;
+    }
+
+    // Create the local player handle (not yet initialized)
+    let mut local_player = LocalPlayer::new(cmd_tx.clone(), event_rx);
+
+    // Wait for initialization to complete
+    {
+      let mut app = self.app.lock().await;
+      app.add_debug_message("Waiting for OAuth and session initialization...".to_string());
+    }
+
+    // Wait for the Initialized or InitializationFailed event
+    loop {
+      match local_player.event_rx.recv() {
+        Ok(crate::player::PlayerEvent::Initialized) => {
+          local_player.state.is_initialized = true;
+          let mut app = self.app.lock().await;
+          app.add_debug_message("Librespot session initialized successfully!".to_string());
+          break;
+        }
+        Ok(crate::player::PlayerEvent::InitializationFailed { message }) => {
+          self
+            .handle_error(anyhow!("Local player initialization failed: {}", message))
+            .await;
+          return;
+        }
+        Ok(other_event) => {
+          // Log unexpected events
+          let mut app = self.app.lock().await;
+          app.add_debug_message(format!("Unexpected event during init: {:?}", other_event));
+        }
+        Err(e) => {
+          self
+            .handle_error(anyhow!("Failed to receive initialization event: {}", e))
+            .await;
+          return;
+        }
+      }
+    }
+
+    let mut app = self.app.lock().await;
+    app.local_player = Some(local_player);
+
+    app.add_debug_message("Local player ready for playback".to_string());
   }
 }

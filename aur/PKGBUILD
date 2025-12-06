@@ -20,8 +20,8 @@ build() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  # Unset RUSTFLAGS to avoid LLD linker issues with ring crate
-  unset RUSTFLAGS
+  # Override RUSTFLAGS to avoid LLD linker issues with ring crate
+  export RUSTFLAGS=""
   cargo build --frozen --release --all-features
 }
 

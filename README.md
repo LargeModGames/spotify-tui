@@ -22,6 +22,7 @@ The terminal in the demo above is using the [Rigel theme](https://rigel.netlify.
 - [Spotatui](#spotatui)
   - [Migrating from spotify-tui](#migrating-from-spotify-tui)
   - [Installation](#installation)
+    - [Arch Linux (AUR)](#arch-linux-aur)
     - [Pre-built Binaries](#pre-built-binaries)
     - [Cargo](#cargo)
     - [Building from Source](#building-from-source)
@@ -58,6 +59,20 @@ cp -r ~/.config/spotify-tui/* ~/.config/spotatui/
 You may be asked to re-authenticate with Spotify the first time.
 
 ## Installation
+
+### Arch Linux (AUR)
+
+If you're on Arch Linux, install from the [AUR](https://aur.archlinux.org/packages/spotatui):
+
+```bash
+# Using an AUR helper like yay
+yay -S spotatui
+
+# Or manually
+git clone https://aur.archlinux.org/spotatui.git
+cd spotatui
+makepkg -si
+```
 
 ### Pre-built Binaries
 
@@ -114,7 +129,7 @@ But here they are again:
 1. Click `Create an app`
     - You now can see your `Client ID` and `Client Secret`
 1. Now click `Edit Settings`
-1. Add `http://localhost:8888/callback` to the Redirect URIs
+1. Add `http://127.0.0.1:8888/callback` to the Redirect URIs (Note: use `127.0.0.1` instead of `localhost` as Spotify no longer allows `localhost` as a redirect URI)
 1. Scroll down and click `Save`
 1. You are now ready to authenticate with Spotify!
 1. Go back to the terminal
